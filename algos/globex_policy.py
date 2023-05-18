@@ -191,12 +191,7 @@ class LocalGlobalContextualPolicy(nn.Module):
                 observation if next observation is used in context. Otherwise,
                 C is the combined size of observation, action, and reward.
         """
-        # Don't forget to reset the encoder hidden state (if RNN) before calling this where appropriate.
-        # It is not hard-coded into here because there are instances where we may want to persist the hidden state inbetween calls (eg. rolling out)
-        #if not self._local_kl_normal_prior: # if needed: save prior for calculating KL loss later
-        #    self.prev_local_z_means = self.local_z_means
-        #    self.prev_local_z_vars = self.local_z_vars
-        
+        # Don't forget to reset the encoder hidden state (if RNN) before calling this where appropriate.        
         if self._local_recurrent_encoder:
             mu, sigma_squared = self._local_encoder.forward(context, detach_every=detach_every)
         else:
@@ -213,7 +208,6 @@ class LocalGlobalContextualPolicy(nn.Module):
             sigma_squared = sigma_squared.clamp(min=self._min_std.item())
         self.local_z_vars =  F.softplus(sigma_squared)
         
-         # Update 11/04/2021 - save prior local context
         if save_prev_dist:  
             self.prev_local_means = self.local_z_means
             self.prev_local_vars = self.local_z_vars
@@ -252,13 +246,6 @@ class LocalGlobalContextualPolicy(nn.Module):
             # Calculate global_z from global context
             self.infer_global_posterior(global_context, detach_every=detach_every)
             self.sample_global_from_belief()
-            
-            #if self._sample_global_embedding:
-            #    global_z = self.z_global # Here, global_z has dims (t, latent_dim)
-            #else:
-            #    global_z = torch.cat([self.global_z_means, self.global_z_vars], dim=-1) # Otherwide, dims (t, latent_dim*2)
-            #global_z_reshaped = [z.repeat(b, 1) for z in global_z]
-            #global_z_reshaped = torch.cat(global_z_reshaped, dim=0) # Dims: (t*b, latent_dim or latent_dim*2)
         else:
             global_z_reshaped = None
         
@@ -266,10 +253,6 @@ class LocalGlobalContextualPolicy(nn.Module):
             # Calculate local_z from local context
             self.infer_local_posterior(local_context, detach_every=detach_every)
             self.sample_local_from_belief()
-            #if self._sample_local_embedding:
-            #    local_z = self.z_local # Here, local_z has dims (t, b, latent_dim)
-            #else:
-            #    local_z = torch.cat([self.local_z_means, self.local_z_vars], dim=-1) # Otherwide, dims (t, b, latent_dim*2)
         else:
             local_z_reshaped = None 
 
@@ -303,26 +286,7 @@ class LocalGlobalContextualPolicy(nn.Module):
         """
         if context is None: #zero-fill context if it's None. Should only occur if local encoder is disabled 
             context = torch.zeros_like(self.z_global.squeeze()).to(global_device())
-        
-        """
-        # Reshape inputs. z here has dims (batch_size, latent_dim*2) where batchsize=1 during rollouts
-        if self._sample_global_embedding:
-            global_z = self.z_global.view(1,-1)
-        else: # If we are not sampling embeddings, we are using the params of the normal dist for the policy
-            global_z = torch.cat([self.global_z_means.view(1, -1), self.global_z_vars.view(1, -1)], dim=-1)
-        if self._sample_local_embedding:
-            local_z = self.z_local.view(1,-1)
-        else: # If we are not sampling embeddings, we are using the params of the normal dist for the policy
-            local_z = torch.cat([self.local_z_means.view(1, -1), self.local_z_vars.view(1, -1)], dim=-1)
-        
-        if self._disable_local_encoder:
-            z = global_z
-        elif self._disable_global_encoder:
-            z = local_z
-        else:
-            z = torch.cat([global_z, local_z], dim=-1).view(1,-1)
-        """
-        
+                
         z, _, _ = self._get_z_for_policy(is_rollout=True)
         
         # Run obs and z through policy
@@ -330,9 +294,7 @@ class LocalGlobalContextualPolicy(nn.Module):
         obs_in = torch.cat([obs, z], dim=-1)
         action, info = self._policy.get_action(obs_in)
         
-        # Update 11/04/2023
         # Here, if prev_local_context is None (after resets only) then we replace prev_local_context with 0s. 
-        # It ultimately should not matter as we remove it anyway later
         if self.prev_local_context is None:
             self.prev_local_context = torch.zeros_like(context)
         
@@ -355,7 +317,7 @@ class LocalGlobalContextualPolicy(nn.Module):
             info['prev_local_context'] = torch.zeros_like(self.z_global.squeeze()).detach().cpu().numpy()
             info['prior_reset_ind'] = prior_reset_ind.cpu().numpy()
 
-        self.prev_local_context = context # Update 11/04/2023
+        self.prev_local_context = context
         
         return action, info
 
@@ -392,7 +354,6 @@ class LocalGlobalContextualPolicy(nn.Module):
                 local_prior = torch.distributions.Normal(torch.zeros(self._latent_dim).to(global_device()), 
                                                     torch.ones(self._latent_dim).to(global_device()))        
                 
-                # This code should be equivalent to above global_kl calc but significantly more efficient
                 local_kl_divs = torch.distributions.kl.kl_divergence(local_post, local_prior)            
                 local_kl_div = torch.sum(local_kl_divs)
             else:
