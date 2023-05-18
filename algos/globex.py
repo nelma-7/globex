@@ -23,11 +23,11 @@ from garage.experiment.deterministic import get_seed, set_seed
 from garage.sampler import _apply_env_update
 
 #custom classes
-from decoder import MLPDecoder
-from encoder import GRURecurrentEncoder
+from core.decoder import MLPDecoder
+from core.encoder import GRURecurrentEncoder
 from globex_policy import LocalGlobalContextualPolicy 
-from evaluation import customMetaEvaluator
-from mi_estimators import CLUB
+from core.evaluation import customMetaEvaluator
+from core.mi_estimators import CLUB
 
 class GLOBEX(MetaRLAlgorithm):
     r"""A new algorithm; utilises two encoders to separate local and global effects
@@ -122,12 +122,12 @@ class GLOBEX(MetaRLAlgorithm):
             discount=0.99,
             reward_scale=5.0,
 
-            # Training params. Defaults taken from PEARL implementation
+            # Training params
             num_train_tasks=100,
-            num_test_tasks=100,
+            num_test_tasks=30,
             latent_dim=5,
             encoder_hidden_sizes=(200,200,200),
-            decoder_hidden_sizes=(200,200,200),
+            decoder_hidden_sizes=(200,200),
             num_iter_per_epoch=2000,
             num_initial_steps=2000, 
             num_steps_prior=400,
@@ -145,7 +145,7 @@ class GLOBEX(MetaRLAlgorithm):
             policy_std_reg_coeff=1E-3,
             policy_pre_activation_coeff=0.,
             soft_target_tau=0.005,
-            replay_buffer_size=100000,
+            replay_buffer_size=1000000,
             policy_max_grad_norm = None, # By default, we don't cap grad norms
             
             # LOCAL/GLOBAL ENCODING PARAMS
@@ -153,8 +153,8 @@ class GLOBEX(MetaRLAlgorithm):
             context_batch_size=100,
             context_tbptt_size=None,
             context_buffer_size=100000,
-            global_kl_lambda=.1,
-            local_kl_lambda=.05,
+            global_kl_lambda=.01,
+            local_kl_lambda=.01,
             local_kl_normal_prior=True, #NEW: True=N(0,1) prior for local KL, False=prev transaction prior
             reward_loss_coefficient=1,
             state_loss_coefficient=1,
@@ -173,18 +173,17 @@ class GLOBEX(MetaRLAlgorithm):
             local_nonlinearity = nn.ReLU,
             decoder_nonlinearity = nn.ReLU,
             epochs_per_eval=1, # Num of epochs per eval run
-            n_exploration_eps=2, #using oyster defaults
+            n_exploration_eps=2, 
             n_test_episodes=1,
             save_grads=False, #saves a list of grad_norms that applies to each iteration
             
             # ABLATION PARAMETERS
             # Note that this should be identical to PEARL if decode_state, decode_reward = False and policy_loss_through_enc, disable_local_encoder = True
-            use_next_obs_in_context=True, # True by default as it only makes sense for local context
+            use_next_obs_in_context=False, # True by default as it only makes sense for local context
             decode_state=False, # Whether to decode state in global encoder training
-            decode_reward=True, # Whether to decode reward in global encoder training
-            policy_loss_through_global=False,
+            decode_reward=False, # Whether to decode reward in global encoder training
+            policy_loss_through_global=True,
             policy_loss_through_local=False,
-            pearl_validation=False, #for one quick check haha
             disable_local_encoder=False,
             disable_global_encoder=False
             ):
@@ -204,7 +203,6 @@ class GLOBEX(MetaRLAlgorithm):
         self._policy_loss_through_global = policy_loss_through_global
         self._disable_local_encoder = disable_local_encoder
         self._disable_global_encoder = disable_global_encoder
-        self._pearl_validation = pearl_validation
         self._save_grads = save_grads
         # Training Params
         self._num_train_tasks = num_train_tasks
@@ -440,7 +438,6 @@ class GLOBEX(MetaRLAlgorithm):
                 idx = np.random.randint(self._num_train_tasks)
                 self._task_idx = idx
                 self._context_replay_buffers[idx].clear()
-                #self._replay_buffers[idx].clear() #UPDATE - see what happens if we keep replay buffer mostly "on-policy"
                 # obtain samples with z ~ prior
                 if self._num_steps_prior > 0:
                     prior_paths = self._obtain_samples(trainer, epoch, self._num_steps_prior)
@@ -481,19 +478,7 @@ class GLOBEX(MetaRLAlgorithm):
                 
             total_autoencoder_loss, reward_reconstruction_loss, state_reconstruction_loss, transition_loss, mi_loss, global_kl_loss, local_kl_loss, qf_loss, vf_loss, policy_loss, \
             policy_mean, policy_log_std, log_pi, global_enc_mean, global_enc_vars, local_enc_mean, local_enc_vars = self._optimize_policy(indices)    
-            """
-            #inline print statements for small-scale debugging. Comment out when actually running things!!
-            print("===============RUN",a,"===============")
-            print("Policy Loss:", policy_loss)
-            print("QF Loss:", qf_loss)
-            print("total autoencoder loss:", total_autoencoder_loss)
-            print("reward_reconstruction_loss:", reward_reconstruction_loss)
-            print('transition_loss:', transition_loss)
-            print('mi_loss:', mi_loss)
-            print('global_kl_loss:', global_kl_loss) 
-            print('local_kl_loss:', local_kl_loss)
-            """
-        # Save grads as well!
+        
         if self._save_grads:
             q_grad_mean = torch.hstack(self.q_grad_norms[-self._num_iter_per_epoch:]).mean()
             policy_grad_mean = torch.hstack(self.policy_grad_norms[-self._num_iter_per_epoch:]).mean()
@@ -623,11 +608,6 @@ class GLOBEX(MetaRLAlgorithm):
             global_enc_mean, global_enc_vars, local_enc_mean, local_enc_vars = self._encoder_decoder_losses(obs_context, act_context, rew_context, no_context, dones_context) 
             total_loss.backward(retain_graph=True)
 
-        #debug
-        #global_grad1 = self._policy._global_encoder._layers[0][0].weight.grad.clone()
-        #local_grad1 = self._policy._local_encoder._layers[0][0].weight.grad.clone()
-        #tdecoder_grad1 = self._policy._transition_decoder._layers[0][0].weight.grad.clone()
-        
         self.qf1_optimizer.zero_grad()
         self.qf2_optimizer.zero_grad()
 
@@ -639,12 +619,6 @@ class GLOBEX(MetaRLAlgorithm):
         qf_loss.backward()
         if self._save_grads: 
             self.q_grad_norms.append(torch.cat([param.grad.view(-1) for param in self._qf1.parameters()]).norm(2)) 
-        #debug
-        #global_grad2 = self._policy._global_encoder._layers[0][0].weight.grad.clone()
-        #local_grad2 = self._policy._local_encoder._layers[0][0].weight.grad.clone()
-        #tdecoder_grad2 = self._policy._transition_decoder._layers[0][0].weight.grad.clone()
-        # test: torch.equal(global_grad1, global_grad2) should be false
-        # test: torch.equal(local_grad1, local_grad2) should be true
         
         self.qf1_optimizer.step() 
         self.qf2_optimizer.step() 
@@ -684,13 +658,13 @@ class GLOBEX(MetaRLAlgorithm):
         self.policy_optimizer.zero_grad()
         policy_loss = self._policy_loss(min_q, policy_mean, policy_log_std, log_pi, pre_tanh)
         policy_loss.backward()
-        if self._policy_max_grad_norm is not None: #clip actual gradients - helps stabilise training
+        if self._policy_max_grad_norm is not None: 
                 clip_grad_norm_(self._policy.networks[5].parameters(), self._policy_max_grad_norm)
         if self._save_grads:
             self.policy_grad_norms.append(torch.cat([param.grad.view(-1) for param in self._policy.networks[5].parameters() if param.grad is not None]).norm(2)) 
         self.policy_optimizer.step()
         
-        # UPDATE GLOBAL/LOCAL ENCODERS/DECODERS HERE (unless running grads thru policy)
+        # If not running grads through policy, encoder-decoder networks will be updated here
         if not (self._policy_loss_through_local or self._policy_loss_through_global):
             if not self._disable_local_encoder: # First, re-calculate local z using sampled context
                 if not self._local_kl_normal_prior:
@@ -739,7 +713,7 @@ class GLOBEX(MetaRLAlgorithm):
         policy_loss = policy_loss + policy_reg_loss
         return policy_loss
         
-    def _encoder_decoder_losses(self, obs, act, rew, next_obs, dones): #NOTE 01/04/2023: CHANGES HAPPENED HERE
+    def _encoder_decoder_losses(self, obs, act, rew, next_obs, dones): 
         """Single function for encoder-decoder loss. 
             This function will either be called before updating the policy if we are passing RL loss through the encoder,
             or after all policy/qf/vf updates if we are not
@@ -774,8 +748,6 @@ class GLOBEX(MetaRLAlgorithm):
             local_enc_vars = self._policy.local_z_vars.mean()
                 
         # optimise our encoder-decoder networks
-        # For ablations: if we disable local then we only run global reconstruction + KL (similar, but not exactly PEARL)
-        #                if we disable global then we run transition ONLY
         if self._disable_local_encoder:
             reward_reconstruction_loss, state_reconstruction_loss = self._global_reconstruction_loss(self._policy.z_global, obs, act, rew, next_obs)
             global_kl_loss, local_kl_loss = self._policy.compute_kl_div(global_kl=True, local_kl=False, dones=dones) #NOTE 01/04/2023: CHANGES HAPPENED HERE
@@ -806,9 +778,6 @@ class GLOBEX(MetaRLAlgorithm):
         
     def _global_reconstruction_loss(self, global_z, obs, actions, reward, next_obs):
         """Calculate global reconstruction loss. 
-        
-        For now we follow the method of Bing et al (2020) and only try to predict reward/obs at the current timestep
-
         Args:
             global_z (meta_batch_size, latent_dim): latent embedding from the global encoder
             obs (meta_batch_size * context_batch_size, feature_space): observations
@@ -882,7 +851,7 @@ class GLOBEX(MetaRLAlgorithm):
         obs_loss = torch.mean((obs_decoded - obs)**2)
         action_loss = torch.mean((action_decoded-actions)**2)
         reward_loss = torch.mean((reward_decoded-rewards)**2)
-        reconstruction_loss = obs_loss + action_loss + reward_loss #TODO: add coefficients? should be ok though
+        reconstruction_loss = obs_loss + action_loss + reward_loss 
         if self._use_next_obs_in_context:
             next_obs_loss = torch.mean((next_obs_decoded-next_obs)**2)
             reconstruction_loss += next_obs_loss
@@ -890,7 +859,7 @@ class GLOBEX(MetaRLAlgorithm):
         return reconstruction_loss
         
     def _mutual_information_loss(self, global_z, local_z):
-        """UPDATE - calculate MI loss via a variational estimate with vCLUB (Cheng et al 2020)
+        """Calculate MI loss via a variational estimate with vCLUB (Cheng et al 2020)
         
         Args:
             global_z (meta_batch_size, latent_dim)
@@ -902,22 +871,20 @@ class GLOBEX(MetaRLAlgorithm):
         global_z = torch.cat(global_z, dim=0)
         local_z = local_z.view(t * b, -1)
         
-        # First, run a few iterations of descent on the vCLUB estimator 
-        #for i in range(3):
-        #TODO: If we want to do multiple iterations properly, we will want to be able to sample global_z and local_z without replacing existing values
-        self.mi_estimator.train() # Set the MI estimator into training mode
+        # First, update the vCLUB estimator 
+        self.mi_estimator.train() 
         self.mi_estimator.requires_grad_(True) # Here, we want to calculate gradients
         mi_network_loss = self.mi_estimator.learning_loss(global_z.detach(), local_z.detach()) 
         self.mi_optimizer.zero_grad()
         mi_network_loss.backward()
-        if self._mi_max_grad_norm is not None: #try clipping this instead
+        if self._mi_max_grad_norm is not None:
             clip_grad_norm_(self.mi_estimator.parameters(), self._mi_max_grad_norm)
         if self._save_grads:
             self.mi_grad_norms.append(torch.cat([param.grad.view(-1) for param in self.mi_estimator.parameters()]).norm(2)) 
         self.mi_optimizer.step()
         
         # Next, use the vCLUB estimator to compute MI
-        self.mi_estimator.eval() # Set MI estimator into eval mode in case it uses weird layers
+        self.mi_estimator.eval()
         self.mi_estimator.requires_grad_(False) # Do not calculate gradients on the estimator when calculating the MI loss
         mi_loss = self.mi_estimator(global_z, local_z) 
         return mi_loss
@@ -977,7 +944,6 @@ class GLOBEX(MetaRLAlgorithm):
                     path['agent_infos']['global_z'].squeeze(), #global z used across the whole path (will not change)
                     'local_z':
                     path['agent_infos']['local_z'].squeeze(), #local z generated as a function of (o_t, a_t, r_{t-1})
-                    #TODO: consider storing a list of previous T transitions to extend local encoder
                     'local_context':
                     path['agent_infos']['local_context'].squeeze(), #context in shape (num_steps, context_dims) is 0 if local encoder is disabled
                     'prev_local_context':
@@ -991,7 +957,7 @@ class GLOBEX(MetaRLAlgorithm):
                     self._context_replay_buffers[self._task_idx].add_path(p)
 
             if update_posterior: #only persist memory across episodes if we are updating the posterior
-                obs, act, rew, no, _, _, _ = self._sample_context(self._task_idx, batch_size=self._context_batch_size) #dones do not matter for global context
+                obs, act, rew, no, _, _, _ = self._sample_context(self._task_idx, batch_size=self._context_batch_size)
                 context = torch.cat([obs, act, rew], dim=-1)
                 if self._use_next_obs_in_context:
                     context = torch.cat([context, no], dim=-1)
@@ -1086,13 +1052,12 @@ class GLOBEX(MetaRLAlgorithm):
             batch_size = self._context_batch_size
         initialized = False
         for idx in indices:
-            if self._local_recurrent_encoder or self._global_recurrent_encoder or self._pearl_validation: # collect FULL paths until you have at least batch_size transitions
+            if self._local_recurrent_encoder or self._global_recurrent_encoder: # collect FULL paths until you have at least batch_size transitions
                 batch = {} # This will be the aggregated batch
                 paths = [] # This will collect paths
                 l = 0
                 while l < batch_size:
                     path = self._context_replay_buffers[idx].sample_path()
-                    #NOTE 04/04/2023: Changes here (always set final step to done=True so local_kl is correctly calculated later)
                     path['dones'][-1] = True
                     paths.append(path)
                     l += path['observations'].shape[0]
@@ -1415,7 +1380,7 @@ class CustomWorker(DefaultWorker):
     def start_episode(self):
         """Begin a new episode."""
         if not self._disable_local_encoder:
-            self.agent.reset_local_belief(1) #because we are running 1 at a time, batch size should always be 1
+            self.agent.reset_local_belief(1) 
         self._eps_length = 0
         self._prev_obs, self._episode_info = self.env.reset()
         context_dims = self.env.observation_space.shape[0] + self.env.action_space.shape[0] + 1

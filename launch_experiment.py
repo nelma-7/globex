@@ -10,7 +10,12 @@ import click
 from garage import wrap_experiment
 
 # Importing envs
-from envs import HalfCheetahVelEnv
+from envs.halfcheetahvel import HalfCheetahVelEnv
+from envs.halfcheetahdir import HalfCheetahDirEnv
+from envs.hopper_wrapper import HopperRandParamsWrappedEnv
+from envs.walker_wrapper import WalkerRandParamsWrappedEnv
+from envs.humanoid import HumanoidDirEnv
+from envs.pointRobot import PointEnv
 
 #TODO: set up configs.default and other launchers
 from configs.default import default_config
@@ -51,17 +56,17 @@ def main(config, use_gpu, gpu_id):
     
     # Set env function
     if variant["env_name"] == 'cheetah-vel':
-        env_class = 1
+        env_class = HalfCheetahVelEnv
     elif variant["env_name"] == 'cheetah-dir':
-        env_class=1
+        env_class = HalfCheetahDirEnv
     elif variant["env_name"] == 'hopper-rand-params':
-        env_class=1
+        env_class = HopperRandParamsWrappedEnv
     elif variant["env_name"] == 'walker-rand-params':
-        env_class=1
+        env_class = WalkerRandParamsWrappedEnv
     elif variant["env_name"] == 'humanoid-dir':
-        env_class=1
+        env_class = HumanoidDirEnv
     elif variant["env_name"] == 'point-robot':
-        env_class=1
+        env_class = PointEnv
     else:
         raise ValueError('Environment name not supported') 
     
