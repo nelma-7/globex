@@ -12,32 +12,10 @@ from garage.torch.policies import TanhGaussianMLPPolicy
 from garage.torch.q_functions import ContinuousMLPQFunction
 from garage.trainer import Trainer
 
-from envs.halfcheetahdir import HalfCheetahDirEnv
-from garage_PEARL.pearl import PEARL, PEARLWorker
-from garage_PEARL.context_conditioned_policy import ContextConditionedPolicy
+from algos.pearl import PEARL, PEARLWorker 
+from algos.context_conditioned_policy import ContextConditionedPolicy
 
-def pearl_experiment(ctxt=None,
-                    seed=1,
-                    num_epochs=25,
-                    num_train_tasks=100, #original:100
-                    num_test_tasks=100, #original:100
-                    latent_size=5,
-                    encoder_hidden_size=200,
-                    net_size=300,
-                    meta_batch_size=4,
-                    num_steps_per_epoch=2000, #original:2000
-                    num_initial_steps=2000,
-                    num_tasks_sample=5, #original:5
-                    num_steps_prior=400,
-                    num_extra_rl_steps_posterior=600,
-                    batch_size=256,
-                    embedding_batch_size=100,
-                    embedding_mini_batch_size=100,
-                    max_episode_length=200,
-                    reward_scale=5.,
-                    n_exploration_eps=2, 
-                    n_test_episodes=1,
-                    epochs_per_eval=2):
+def pearl_experiment(ctxt, env_class, is_gym, variant):
     """Train PEARL, using the garage package.
     Args (contained within variant):
         ctxt (garage.experiment.ExperimentContext): The experiment
@@ -72,40 +50,53 @@ def pearl_experiment(ctxt=None,
         reward_scale (int): Reward scale.
         use_gpu (bool): Whether or not to use GPU for training.
     """
-    set_seed(seed)
-    encoder_hidden_sizes = (encoder_hidden_size, encoder_hidden_size,
-                            encoder_hidden_size)
-    # create multi-task environment and sample tasks
-    base_env = HalfCheetahDirEnv() # The base env is to ensure we are sampling tasks with the same seed!
-    base_env.seed(seed)
-    base_env.action_space.seed(seed)
-    env_sampler = SetTaskSampler(
-        HalfCheetahDirEnv,
-        env=base_env,
-        wrapper=lambda env, _: normalize(
-            GymEnv(env, max_episode_length=max_episode_length)))
-    env = env_sampler.sample(num_train_tasks) 
-    initial_env = env[0]()
-    
-    test_env_sampler = SetTaskSampler(
-        HalfCheetahDirEnv,
-        env=base_env,
-        wrapper=lambda env, _: normalize(
-            GymEnv(env, max_episode_length=max_episode_length)))
-
+    set_seed(variant['seed'])
+    ctxt = None
     trainer = Trainer(ctxt)
 
-    # instantiate networks
-    augmented_env = PEARL.augment_env_spec(initial_env, latent_size)
-    qf = ContinuousMLPQFunction(env_spec=augmented_env,
-                                hidden_sizes=[net_size, net_size, net_size])
+    variant["encoder_hidden_sizes"] = (variant["encoder_hidden_size"], variant["encoder_hidden_size"], variant["encoder_hidden_size"])
 
-    vf_env = PEARL.get_env_spec(initial_env, latent_size, 'vf')
+    # Create multi-task environment and sample tasks
+    base_env = env_class() # The base env is to ensure we are sampling tasks with the same seed!
+    base_env.seed(variant['seed'])
+    base_env.action_space.seed(variant['seed'])
+
+    if is_gym:
+        env_sampler = SetTaskSampler(
+            env_class,
+            env=base_env,
+            wrapper=lambda env, _: normalize(
+                GymEnv(env, max_episode_length=variant["max_episode_length"])))
+        test_env_sampler = SetTaskSampler(
+        env_class,
+        env=base_env,
+        wrapper=lambda env, _: normalize(
+            GymEnv(env, max_episode_length=variant["max_episode_length"])))
+    else: # an example of an env where is_gym=False is PointRobot
+        env_sampler = SetTaskSampler(
+            env_class,
+            env=base_env,
+            wrapper=lambda env, _: normalize(env))
+        test_env_sampler = SetTaskSampler(
+        env_class,
+        env=base_env,
+        wrapper=lambda env, _: normalize(env))
+
+    env = env_sampler.sample(variant["num_train_tasks"]) # env[0]() will produce an environment
+    initial_env = env[0]()
+
+    # instantiate networks
+    hidden_sizes = [variant["net_size"],variant["net_size"],variant["net_size"]]
+    augmented_env = PEARL.augment_env_spec(initial_env, variant["algo_params"]["latent_dim"])
+    qf = ContinuousMLPQFunction(env_spec=augmented_env,
+                                hidden_sizes=hidden_sizes)
+
+    vf_env = PEARL.get_env_spec(initial_env, variant["algo_params"]["latent_dim"], 'vf')
     vf = ContinuousMLPQFunction(env_spec=vf_env,
-                                hidden_sizes=[net_size, net_size, net_size])
+                                hidden_sizes=hidden_sizes)
 
     inner_policy = TanhGaussianMLPPolicy(
-        env_spec=augmented_env, hidden_sizes=[net_size, net_size, net_size])
+        env_spec=augmented_env, hidden_sizes=hidden_sizes)
     
     sampler = LocalSampler(agents=None,
                            envs=initial_env, 
@@ -113,7 +104,7 @@ def pearl_experiment(ctxt=None,
                            n_workers=1,
                            worker_class=PEARLWorker)
 
-    pearl = PEARL(
+    algo = PEARL(
         env=env,
         policy_class=ContextConditionedPolicy,
         encoder_class=MLPEncoder,
@@ -121,33 +112,13 @@ def pearl_experiment(ctxt=None,
         qf=qf,
         vf=vf,
         sampler=sampler,
-        num_train_tasks=num_train_tasks,
-        num_test_tasks=num_test_tasks,
-        latent_dim=latent_size,
-        encoder_hidden_sizes=encoder_hidden_sizes,
-        test_env_sampler=test_env_sampler,
-        meta_batch_size=meta_batch_size,
-        num_steps_per_epoch=num_steps_per_epoch,
-        num_initial_steps=num_initial_steps,
-        num_tasks_sample=num_tasks_sample,
-        num_steps_prior=num_steps_prior,
-        num_extra_rl_steps_posterior=num_extra_rl_steps_posterior,
-        batch_size=batch_size,
-        embedding_batch_size=embedding_batch_size,
-        embedding_mini_batch_size=embedding_mini_batch_size,
-        n_exploration_eps=n_exploration_eps,
-        n_test_episodes=n_test_episodes,
-        epochs_per_eval=epochs_per_eval,
-        reward_scale=reward_scale,
+        **variant["algo_params"] # TODO try kwargs???
     )
 
-    set_gpu_mode(use_gpu, gpu_id=gpu_id)
-    if use_gpu:
-        pearl.to()
+    set_gpu_mode(variant["util_params"]["use_gpu"], gpu_id=variant["util_params"]["gpu_id"])
+    if variant["util_params"]["use_gpu"]:
+        algo.to()
 
-    trainer.setup(algo=pearl, env=initial_env)
+    trainer.setup(algo=algo, env=initial_env)
 
-    trainer.train(n_epochs=num_epochs, batch_size=batch_size)
-
-
-pearl_half_cheetah_dir()
+    trainer.train(n_epochs=variant["num_epochs"], batch_size=variant["algo_params"]["batch_size"])

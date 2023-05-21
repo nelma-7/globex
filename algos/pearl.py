@@ -24,8 +24,8 @@ from garage.experiment.deterministic import get_seed, set_seed
 from garage.sampler import _apply_env_update
 
 # Using the version copied into this github folder - it's an exact copy from the garage package
-from garage_PEARL.context_conditioned_policy import ContextConditionedPolicy
-from evaluation import customMetaEvaluator
+from algos.context_conditioned_policy import ContextConditionedPolicy
+from core.evaluation import customMetaEvaluator
 
 
 class PEARL(MetaRLAlgorithm):
@@ -486,8 +486,6 @@ class PEARL(MetaRLAlgorithm):
 
         returned_paths = []
         while total_samples < num_samples:
-            #debugging note: self._env here is a "SetTaskUpdate" object, which is just a pair (env_class, task) where env_class is something like HalfCheetah or Ant
-            # before obtaining samples, the code will instantiate the env with the task, then obtain samples.
             paths = trainer.obtain_samples(itr, num_samples_per_batch,
                                            self._policy,
                                            self._env[self._task_idx]) 
@@ -786,21 +784,16 @@ class PEARLWorker(DefaultWorker):
         self._deterministic = deterministic
         self._accum_context = accum_context
         self._episode_info = None
-        self.counter = 0 #TESTING - we may be able to use this to have a "consistent random" env seeding!
+        self.counter = 0 
         super().__init__(seed=seed,
                          max_episode_length=max_episode_length,
                          worker_number=worker_number)
 
-    # TESTING
     def worker_init(self):
         """Initialize a worker."""
         if self._seed is not None:
             set_seed(self._seed + self._worker_number)
-        if self.env is not None and self.env.unwrapped.__class__.__name__ in ['MetaWorldSetTaskEnv']: # a bit hacky, but we won't want to set env seed for basic envs
-            self.env.unwrapped._current_env.seed(get_seed() + self.counter)
-            self.env.unwrapped._current_env.action_space.seed(get_seed() + self.counter)
-            self.counter += 1 
-        elif self.env is not None and self.env.unwrapped.__class__.__name__ not in ['PointEnv', 'SparsePointEnv']: # a bit hacky, but we won't want to set env seed for basic envs
+        if self.env is not None and self.env.unwrapped.__class__.__name__ not in ['PointEnv', 'SparsePointEnv']: # a bit hacky, but we won't want to set env seed for basic envs
             self.env.seed(get_seed() + self.counter)
             self.env.action_space.seed(get_seed() + self.counter)
             self.counter += 1 # we increment this counter to ensure envs change but in a predictable way
@@ -825,16 +818,11 @@ class PEARLWorker(DefaultWorker):
 
         """
         self.env, _ = _apply_env_update(self.env, env_update)
-        if self.env.unwrapped.__class__.__name__ in ['MetaWorldSetTaskEnv']: # making metaworld work
-            self.env.unwrapped._current_env.seed(get_seed() + self.counter)
-            self.env.unwrapped._current_env.action_space.seed(get_seed() + self.counter)
-            self.counter += 1 
-        elif self.env.unwrapped.__class__.__name__ not in ['PointEnv', 'SparsePointEnv']: # a bit hacky, but we won't want to set env seed for basic envs
+        if self.env.unwrapped.__class__.__name__ not in ['PointEnv', 'SparsePointEnv']: # a bit hacky, but we won't want to set env seed for basic envs
             self.env.seed(get_seed() + self.counter)
             self.env.action_space.seed(get_seed() + self.counter)
             self.counter += 1 # we increment this counter to ensure envs change but in a predictable way
         
-    
     def start_episode(self):
         """Begin a new episode."""
         self._eps_length = 0
@@ -860,12 +848,6 @@ class PEARLWorker(DefaultWorker):
                 self._agent_infos[k].append(v)
             self._eps_length += 1
 
-            #if self._accum_context:
-            #    s = TimeStep.from_env_step(env_step=es,
-            #                               last_observation=self._prev_obs,
-            #                               agent_info=agent_info,
-            #                               episode_info=self._episode_info)
-            #    self.agent.update_context(s)
             if not es.last:
                 self._prev_obs = es.observation
                 return False

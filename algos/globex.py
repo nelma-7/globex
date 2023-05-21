@@ -25,7 +25,7 @@ from garage.sampler import _apply_env_update
 #custom classes
 from core.decoder import MLPDecoder
 from core.encoder import GRURecurrentEncoder
-from globex_policy import LocalGlobalContextualPolicy 
+from algos.globex_policy import LocalGlobalContextualPolicy 
 from core.evaluation import customMetaEvaluator
 from core.mi_estimators import CLUB
 

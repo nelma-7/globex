@@ -1,4 +1,4 @@
-import torch.functional as F
+import torch.nn.functional as F
 
 default_config = dict(
     algo='GLOBEX', # algorithm
@@ -15,9 +15,9 @@ default_config = dict(
     vf_nonlinearity = F.relu,
     qf_nonlinearity = F.relu,
     algo_params=dict(
-        n_train_tasks=100, 
-        n_test_tasks=30,
-        latent_size=5, # dimension of the latent context vector
+        num_train_tasks=100, 
+        num_test_tasks=30,
+        latent_dim=5, # dimension of the latent context vector
         discount=0.99,
         reward_scale=5.0,
         use_next_obs_in_context=False,

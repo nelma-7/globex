@@ -34,10 +34,11 @@ def deep_update_dict(fr, to):
     return to
 
 @click.command()
-@click.argument('config', default=None)
+@click.option('--config', default=None)
+@click.option('--name', default=None)
 @click.option('--use_gpu', default=True)
 @click.option('--gpu_id', default=0)
-def main(config, use_gpu, gpu_id):
+def main(config, name, use_gpu, gpu_id):
 
     variant = default_config
     if config:
@@ -46,31 +47,42 @@ def main(config, use_gpu, gpu_id):
         variant = deep_update_dict(exp_params, variant)
     variant['util_params']['use_gpu'] = use_gpu
     variant['util_params']['gpu_id'] = gpu_id
+    
+    if name:
+        experiment_name = name
+    else:
+        experiment_name = variant['algo']+'-'+variant['env_name']
 
     if variant['algo'] == 'GLOBEX':
-        experiment_fn = wrap_experiment(name='hello', archive_launch_repo=False)(globex_experiment)
+        experiment_fn = wrap_experiment(name=experiment_name, archive_launch_repo=False)(globex_experiment)
     elif variant['algo'] == 'PEARL':
-        experiment_fn = wrap_experiment(name='hello', archive_launch_repo=False)(pearl_experiment)
+        experiment_fn = wrap_experiment(name=experiment_name, archive_launch_repo=False)(pearl_experiment)
     else:
         raise ValueError('No other algorithms available at this date')
     
     # Set env function
     if variant["env_name"] == 'cheetah-vel':
         env_class = HalfCheetahVelEnv
+        is_gym = True
     elif variant["env_name"] == 'cheetah-dir':
         env_class = HalfCheetahDirEnv
+        is_gym = True
     elif variant["env_name"] == 'hopper-rand-params':
         env_class = HopperRandParamsWrappedEnv
+        is_gym = True
     elif variant["env_name"] == 'walker-rand-params':
         env_class = WalkerRandParamsWrappedEnv
+        is_gym = True
     elif variant["env_name"] == 'humanoid-dir':
         env_class = HumanoidDirEnv
+        is_gym = True
     elif variant["env_name"] == 'point-robot':
         env_class = PointEnv
+        is_gym = False
     else:
         raise ValueError('Environment name not supported') 
     
-    experiment_fn(env_class, variant)
+    experiment_fn(env_class=env_class, is_gym=is_gym, variant=variant)
 
 if __name__ == "__main__":
     main()

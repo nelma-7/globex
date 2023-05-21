@@ -13,7 +13,7 @@ from garage.trainer import Trainer
 from algos.globex import GLOBEX, CustomWorker #new algo
 from core.value_function import ContinuousMLPValueFunction
 
-def globex_experiment(env_class, variant):
+def globex_experiment(ctxt=None, env_class=None, is_gym=True, variant=None):
     """Train GLOBEX.
     Args:
         ctxt (garage.experiment.ExperimentContext): The experiment
@@ -24,7 +24,6 @@ def globex_experiment(env_class, variant):
         use_gpu (bool): Whether or not to use GPU for training.
     """
     set_seed(variant['seed'])
-    ctxt = None
     trainer = Trainer(ctxt)
 
     variant["encoder_hidden_sizes"] = (variant["encoder_hidden_size"], variant["encoder_hidden_size"], variant["encoder_hidden_size"])
@@ -34,25 +33,34 @@ def globex_experiment(env_class, variant):
     base_env.seed(variant['seed'])
     base_env.action_space.seed(variant['seed'])
 
-    env_sampler = SetTaskSampler(
+    if is_gym:
+        env_sampler = SetTaskSampler(
+            env_class,
+            env=base_env,
+            wrapper=lambda env, _: normalize(
+                GymEnv(env, max_episode_length=variant["max_episode_length"])))
+        test_env_sampler = SetTaskSampler(
         env_class,
         env=base_env,
         wrapper=lambda env, _: normalize(
             GymEnv(env, max_episode_length=variant["max_episode_length"])))
+    else: # an example of an env where is_gym=False is PointRobot
+        env_sampler = SetTaskSampler(
+            env_class,
+            env=base_env,
+            wrapper=lambda env, _: normalize(env))
+        test_env_sampler = SetTaskSampler(
+        env_class,
+        env=base_env,
+        wrapper=lambda env, _: normalize(env))
 
-    env = env_sampler.sample(variant["num_train_tasks"]) # env[0]() will produce an environment
+    env = env_sampler.sample(variant["algo_params"]["num_train_tasks"]) # env[0]() will produce an environment
     initial_env = env[0]()
-
-    test_env_sampler = SetTaskSampler(
-        env_class,
-        env=base_env,
-        wrapper=lambda env, _: normalize(
-            GymEnv(env, max_episode_length=variant["max_episode_length"])))
 
     # Instantiate networks
     hidden_sizes = [variant["net_size"],variant["net_size"],variant["net_size"]]
     # Augmented env dims - in = action space, out = obs space + latent dim
-    augmented_env = GLOBEX.augment_env_spec(initial_env, variant["algo_params"]["latent_size"], 
+    augmented_env = GLOBEX.augment_env_spec(initial_env, variant["algo_params"]["latent_dim"], 
                                             disable_local_encoder=variant["algo_params"]["disable_local_encoder"], 
                                             disable_global_encoder=variant["algo_params"]["disable_global_encoder"],
                                             sample_global_embedding=variant["algo_params"]["sample_global_embedding"], 
@@ -61,7 +69,7 @@ def globex_experiment(env_class, variant):
                                 hidden_sizes=hidden_sizes,
                                 hidden_nonlinearity = variant["qf_nonlinearity"])
 
-    vf_env = GLOBEX.get_env_spec(initial_env, variant["algo_params"]["latent_size"], 'vf', 
+    vf_env = GLOBEX.get_env_spec(initial_env, variant["algo_params"]["latent_dim"], 'vf', 
                                  use_next_obs_in_context=variant["algo_params"]["use_next_obs_in_context"], 
                                 disable_local_encoder=variant["algo_params"]["disable_local_encoder"], 
                                 disable_global_encoder=variant["algo_params"]["disable_global_encoder"],

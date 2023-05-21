@@ -47,10 +47,6 @@ class ContextConditionedPolicy(nn.Module):
         self._use_next_obs = use_next_obs
 
         # initialize buffers for z distribution and z
-        # use buffers so latent context can be saved along with model weights
-        # z_means and z_vars are the params for the gaussian distribution
-        # over latent task belief maintained in the policy; z is a sample from
-        # this distribution that the policy is conditioned on
         self.register_buffer('z', torch.zeros(1, latent_dim))
         self.register_buffer('z_means', torch.zeros(1, latent_dim))
         self.register_buffer('z_vars', torch.zeros(1, latent_dim))
@@ -72,11 +68,8 @@ class ContextConditionedPolicy(nn.Module):
             var = torch.zeros(num_tasks, self._latent_dim).to(global_device())
         self.z_means = mu
         self.z_vars = var
-        # sample a new z from the prior. At this point, z is a list of latent_dim sampled values
         self.sample_from_belief()
-        # reset the context collected so far
         self._context = None
-        # reset any hidden state in the encoder network (relevant for RNN)
         self._context_encoder.reset()
 
     def sample_from_belief(self):
