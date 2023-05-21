@@ -36,15 +36,17 @@ def deep_update_dict(fr, to):
 @click.command()
 @click.option('--config', default=None)
 @click.option('--name', default=None)
+@click.option('--seed', default=1)
 @click.option('--use_gpu', default=True)
 @click.option('--gpu_id', default=0)
-def main(config, name, use_gpu, gpu_id):
+def main(config, name, seed, use_gpu, gpu_id):
 
     variant = default_config
     if config:
         with open(os.path.join(config)) as f:
             exp_params = json.load(f)
         variant = deep_update_dict(exp_params, variant)
+    variant['seed'] = seed #set seed via argument
     variant['util_params']['use_gpu'] = use_gpu
     variant['util_params']['gpu_id'] = gpu_id
     

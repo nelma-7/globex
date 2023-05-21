@@ -1,7 +1,8 @@
 """PEARL and PEARLWorker in Pytorch.
 
 Code is adapted from https://github.com/rlworkgroup/garage/ in order to:
-    - add additional parameters to control eval behaviour
+    - Add additional parameters to control eval behaviour
+    - Change param name to match GLOBEX equivalents
     - Log training performance
 """
 
@@ -73,7 +74,7 @@ class PEARL(MetaRLAlgorithm):
         use_next_obs_in_context (bool): Whether or not to use next observation
             in distinguishing between tasks.
         meta_batch_size (int): Meta batch size.
-        num_steps_per_epoch (int): Number of iterations per epoch.
+        num_iter_per_epoch (int): Number of iterations per epoch.
         num_initial_steps (int): Number of transitions obtained per task before
             training.
         num_tasks_sample (int): Number of random tasks to obtain data for each
@@ -86,9 +87,9 @@ class PEARL(MetaRLAlgorithm):
             to obtain per task with z ~ posterior that are only used to train
             the policy and NOT the encoder.
         batch_size (int): Number of transitions in RL batch.
-        embedding_batch_size (int): Number of transitions in context batch.
-        embedding_mini_batch_size (int): Number of transitions in mini context
-            batch; should be same as embedding_batch_size for non-recurrent
+        context_batch_size (int): Number of transitions in context batch.
+        context_mini_batch_size (int): Number of transitions in mini context
+            batch; should be same as context_batch_size for non-recurrent
             encoder.
         discount (float): RL discount factor.
         replay_buffer_size (int): Maximum samples in replay buffer.
@@ -127,21 +128,21 @@ class PEARL(MetaRLAlgorithm):
             use_information_bottleneck=True,
             use_next_obs_in_context=False,
             meta_batch_size=64,
-            num_steps_per_epoch=1000,
+            num_iter_per_epoch=1000,
             num_initial_steps=100,
             num_tasks_sample=100,
             num_steps_prior=100,
             num_steps_posterior=0,
             num_extra_rl_steps_posterior=100,
             batch_size=1024,
-            embedding_batch_size=1024,
-            embedding_mini_batch_size=1024,
+            context_batch_size=1024,
+            context_mini_batch_size=1024,
             discount=0.99,
             replay_buffer_size=1000000,
             reward_scale=1,
             update_post_train=1,
             epochs_per_eval=1, # Num of epochs per eval run
-            n_exploration_eps=10, #using garage.MetaEvaluator defaults
+            n_exploration_eps=2, 
             n_test_episodes=1):
 
         self._env = env
@@ -160,15 +161,15 @@ class PEARL(MetaRLAlgorithm):
         self._use_next_obs_in_context = use_next_obs_in_context
 
         self._meta_batch_size = meta_batch_size
-        self._num_steps_per_epoch = num_steps_per_epoch
+        self._num_iter_per_epoch = num_iter_per_epoch
         self._num_initial_steps = num_initial_steps
         self._num_tasks_sample = num_tasks_sample
         self._num_steps_prior = num_steps_prior
         self._num_steps_posterior = num_steps_posterior
         self._num_extra_rl_steps_posterior = num_extra_rl_steps_posterior
         self._batch_size = batch_size
-        self._embedding_batch_size = embedding_batch_size
-        self._embedding_mini_batch_size = embedding_mini_batch_size
+        self._context_batch_size = context_batch_size
+        self._context_mini_batch_size = context_mini_batch_size
         self._discount = discount
         self._replay_buffer_size = replay_buffer_size
         self._reward_scale = reward_scale
@@ -346,7 +347,7 @@ class PEARL(MetaRLAlgorithm):
     
     def _train_once(self, epoch):
         """Perform one iteration of training."""
-        for _ in range(self._num_steps_per_epoch):
+        for _ in range(self._num_iter_per_epoch):
             indices = np.random.choice(range(self._num_train_tasks),
                                        self._meta_batch_size)
             policy_loss, vf_loss, qf_loss, kl_loss, policy_mean, policy_log_std, log_pi, global_enc_mean, global_enc_vars = self._optimize_policy(indices)
@@ -582,7 +583,7 @@ class PEARL(MetaRLAlgorithm):
         initialized = False
         for idx in indices:
             batch = self._context_replay_buffers[idx].sample_transitions(
-                self._embedding_batch_size)
+                self._context_batch_size)
             o = batch['observations']
             a = batch['actions']
             r = batch['rewards']

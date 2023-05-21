@@ -1,0 +1,26 @@
+{
+    "algo": "GLOBEX",
+    "env_name": "hopper-rand-params",
+    
+    "algo_params": {
+        "num_epochs": 600,
+        "num_train_tasks": 40,
+        "num_eval_tasks": 10,
+        "use_next_obs_in_context": true,
+        "latent_dim": 5, 
+        "num_initial_steps": 2000,
+        "num_steps_prior": 400,
+        "num_steps_posterior": 0,
+        "num_extra_rl_steps_posterior": 600,
+        "num_iter_per_epoch": 4000,
+        "replay_buffer_size": 100000,
+        "batch_size": 256,
+        "context_batch_size": 100,
+        "meta_batch_size": 10,
+        "global_kl_lambda": 0.1,
+        "local_kl_lambda": 0.1,
+        "mi_loss_coefficient": 0.1,
+        "n_exploration_eps": 2,
+        "n_test_episodes": 1
+    }
+}

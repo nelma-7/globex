@@ -105,7 +105,7 @@ def globex_experiment(ctxt=None, env_class=None, is_gym=True, variant=None):
         local_recurrent_encoder=variant["local_recurrent_encoder"],
         encoder_hidden_sizes=variant["encoder_hidden_sizes"],
         decoder_hidden_sizes=variant["decoder_hidden_sizes"], 
-        **variant["algo_params"] # TODO try kwargs???
+        **variant["algo_params"]
     )
 
     set_gpu_mode(variant["util_params"]["use_gpu"], gpu_id=variant["util_params"]["gpu_id"])

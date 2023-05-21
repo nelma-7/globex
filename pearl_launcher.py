@@ -82,16 +82,16 @@ def pearl_experiment(ctxt, env_class, is_gym, variant):
         env=base_env,
         wrapper=lambda env, _: normalize(env))
 
-    env = env_sampler.sample(variant["num_train_tasks"]) # env[0]() will produce an environment
+    env = env_sampler.sample(variant["pearl_params"]["num_train_tasks"]) # env[0]() will produce an environment
     initial_env = env[0]()
 
     # instantiate networks
     hidden_sizes = [variant["net_size"],variant["net_size"],variant["net_size"]]
-    augmented_env = PEARL.augment_env_spec(initial_env, variant["algo_params"]["latent_dim"])
+    augmented_env = PEARL.augment_env_spec(initial_env, variant["pearl_params"]["latent_dim"])
     qf = ContinuousMLPQFunction(env_spec=augmented_env,
                                 hidden_sizes=hidden_sizes)
 
-    vf_env = PEARL.get_env_spec(initial_env, variant["algo_params"]["latent_dim"], 'vf')
+    vf_env = PEARL.get_env_spec(initial_env, variant["pearl_params"]["latent_dim"], 'vf')
     vf = ContinuousMLPQFunction(env_spec=vf_env,
                                 hidden_sizes=hidden_sizes)
 
@@ -106,13 +106,13 @@ def pearl_experiment(ctxt, env_class, is_gym, variant):
 
     algo = PEARL(
         env=env,
-        policy_class=ContextConditionedPolicy,
-        encoder_class=MLPEncoder,
         inner_policy=inner_policy,
         qf=qf,
         vf=vf,
         sampler=sampler,
-        **variant["algo_params"] # TODO try kwargs???
+        test_env_sampler=test_env_sampler,
+        encoder_hidden_sizes=variant["encoder_hidden_sizes"],
+        **variant["pearl_params"] 
     )
 
     set_gpu_mode(variant["util_params"]["use_gpu"], gpu_id=variant["util_params"]["gpu_id"])
@@ -121,4 +121,4 @@ def pearl_experiment(ctxt, env_class, is_gym, variant):
 
     trainer.setup(algo=algo, env=initial_env)
 
-    trainer.train(n_epochs=variant["num_epochs"], batch_size=variant["algo_params"]["batch_size"])
+    trainer.train(n_epochs=variant["num_epochs"], batch_size=variant["pearl_params"]["batch_size"])
