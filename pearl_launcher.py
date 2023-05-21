@@ -51,7 +51,6 @@ def pearl_experiment(ctxt, env_class, is_gym, variant):
         use_gpu (bool): Whether or not to use GPU for training.
     """
     set_seed(variant['seed'])
-    ctxt = None
     trainer = Trainer(ctxt)
 
     variant["encoder_hidden_sizes"] = (variant["encoder_hidden_size"], variant["encoder_hidden_size"], variant["encoder_hidden_size"])

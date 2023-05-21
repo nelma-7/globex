@@ -17,7 +17,6 @@ from envs.walker_wrapper import WalkerRandParamsWrappedEnv
 from envs.humanoid import HumanoidDirEnv
 from envs.pointRobot import PointEnv
 
-#TODO: set up configs.default and other launchers
 from configs.default import default_config
 from pearl_launcher import pearl_experiment
 from globex_launcher import globex_experiment

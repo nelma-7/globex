@@ -1,11 +1,11 @@
 {
     "algo": "GLOBEX",
     "env_name": "hopper-rand-params",
-    
-    "algo_params": {
-        "num_epochs": 600,
+    "num_epochs": 600,
+
+    "algo_params": {    
         "num_train_tasks": 40,
-        "num_eval_tasks": 10,
+        "num_test_tasks": 10,
         "use_next_obs_in_context": true,
         "latent_dim": 5, 
         "num_initial_steps": 2000,

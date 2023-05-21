@@ -1,11 +1,11 @@
 {
     "algo": "PEARL",
     "env_name": "cheetah-dir",
+    "num_epochs": 350,
     
     "pearl_params": {
-        "num_epochs": 350,
         "num_train_tasks": 2,
-        "num_eval_tasks": 2,
+        "num_test_tasks": 2,
         "latent_dim": 5, 
         "num_initial_steps": 2000,
         "num_steps_prior": 1000,

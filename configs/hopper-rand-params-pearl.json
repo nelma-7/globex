@@ -1,11 +1,11 @@
 {
     "algo": "PEARL",
     "env_name": "hopper-rand-params",
-    
-    "pearl_params": {
-        "num_epochs": 600,
+    "num_epochs": 600,
+
+    "pearl_params": {    
         "num_train_tasks": 40,
-        "num_eval_tasks": 10,
+        "num_test_tasks": 10,
         "use_next_obs_in_context": true,
         "latent_dim": 5, 
         "num_initial_steps": 2000,
