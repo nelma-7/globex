@@ -46,7 +46,7 @@ default_config = dict(
         context_buffer_size=100000,
         global_kl_lambda=.01,
         local_kl_lambda=.01,
-        local_kl_normal_prior=True, # True=N(0,1) prior for local KL, False=prev transaction prior
+        local_kl_normal_prior=False, # True=N(0,1) prior for local KL, False=prev transaction prior
         reward_loss_coefficient=1,
         state_loss_coefficient=1,
         transition_reconstruction_coefficient=1,
