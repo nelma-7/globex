@@ -405,7 +405,7 @@ class GLOBEX(MetaRLAlgorithm):
             lr=context_lr 
         )
 
-        #debugging!
+        # for debugging
         self.q_grad_norms = []
         self.policy_grad_norms = []
         self.local_enc_grad_norms = []
@@ -721,12 +721,11 @@ class GLOBEX(MetaRLAlgorithm):
             or after all policy/qf/vf updates if we are not
             
             Inputs:
-            - obs (num_tasks, context_batch_size, obs_dim)
-            - act (num_tasks, context_batch_size, act_dim)
-            - rew (num_tasks, context_batch_size, batch_size, rew_dim)
-            - next_obs (num_tasks, context_batch_size, obs_dim)
-            - prev_local_z_mean (TBD)
-            - prev_local_z_var (TBD)  
+            - obs, dims (num_tasks, context_batch_size, obs_dim)
+            - act, dims  (num_tasks, context_batch_size, act_dim)
+            - rew, dims  (num_tasks, context_batch_size, rew_dim)
+            - next_obs, dims  (num_tasks, context_batch_size, obs_dim)
+            - dones, dims (num_tasks, context_batch_size, 1)
             """
         # Reshape everything to flatten dims
         t, b, _ = obs.size()
@@ -752,19 +751,19 @@ class GLOBEX(MetaRLAlgorithm):
         # optimise our encoder-decoder networks
         if self._disable_local_encoder:
             reward_reconstruction_loss, state_reconstruction_loss = self._global_reconstruction_loss(self._policy.z_global, obs, act, rew, next_obs)
-            global_kl_loss, local_kl_loss = self._policy.compute_kl_div(global_kl=True, local_kl=False, dones=dones) #NOTE 01/04/2023: CHANGES HAPPENED HERE
+            global_kl_loss, local_kl_loss = self._policy.compute_kl_div(global_kl=True, local_kl=False, dones=dones)
             transition_loss = torch.Tensor([0]).to(global_device())
             mi_loss = torch.Tensor([0]).to(global_device())
         elif self._disable_global_encoder:
             transition_loss = self._transition_reconstruction_loss(obs, act, rew, next_obs, self._policy.z_global, self._policy.z_local)
-            global_kl_loss, local_kl_loss = self._policy.compute_kl_div(global_kl=False, local_kl=True, dones=dones) #NOTE 01/04/2023: CHANGES HAPPENED HERE
+            global_kl_loss, local_kl_loss = self._policy.compute_kl_div(global_kl=False, local_kl=True, dones=dones)
             reward_reconstruction_loss = torch.Tensor([0]).to(global_device())
             state_reconstruction_loss = torch.Tensor([0]).to(global_device())
             mi_loss = torch.Tensor([0]).to(global_device())
         else: #regular runs
             reward_reconstruction_loss, state_reconstruction_loss = self._global_reconstruction_loss(self._policy.z_global, obs, act, rew, next_obs)
             transition_loss = self._transition_reconstruction_loss(obs, act, rew, next_obs, self._policy.z_global, self._policy.z_local)  
-            global_kl_loss, local_kl_loss = self._policy.compute_kl_div(global_kl=True, local_kl=True, dones=dones) #NOTE 01/04/2023: CHANGES HAPPENED HERE
+            global_kl_loss, local_kl_loss = self._policy.compute_kl_div(global_kl=True, local_kl=True, dones=dones) 
             mi_loss = self._mutual_information_loss(self._policy.z_global, self._policy.z_local) 
 
         # Calculate total loss. Note that values will be 0 if they are ablated due to code above
@@ -903,9 +902,8 @@ class GLOBEX(MetaRLAlgorithm):
             trainer (Trainer): Trainer.
             itr (int): Index of iteration (epoch).
             num_samples (int): Number of samples to obtain.
-            update_posterior_rate (int): How often (in episodes) to infer
-                posterior of policy.
-            add_to_enc_buffer (bool): Whether or not to add samples to encoder
+            update_posterior_rate (bool): Whether we want to infer posterior after the episode.
+            add_to_global_enc (bool): Whether or not to add samples to encoder
                 buffer.
 
         """
@@ -981,8 +979,9 @@ class GLOBEX(MetaRLAlgorithm):
                 is the number of tasks. N is batch size.
             torch.Tensor: Actions, with shape :math:`(X, N, A^*)`.
             torch.Tensor: Rewards, with shape :math:`(X, N, 1)`.
-            torch.Tensor: Next obervations, with shape :math:`(X, N, O^*)`.
+            torch.Tensor: Next observations, with shape :math:`(X, N, O^*)`.
             torch.Tensor: Dones, with shape :math:`(X, N, 1)`.
+            torch.Tensor: Local context, with shape :math:`(X, N, context_dim)`.
 
         """
         # transitions sampled randomly from replay buffer
@@ -1031,7 +1030,7 @@ class GLOBEX(MetaRLAlgorithm):
         return o, a, r, no, d, lc
 
     def _sample_context(self, indices, batch_size=None):
-        """Sample batch of context from a list of tasks.
+        """Sample batch of context (and other values) from a list of tasks.
         If either global or local encoders are recurrent then we need to sample full paths instead
         We also sample a full path if our local prior takes the previous local belief (instead of a simple N(0,1) at all times), in order to properly calc KL loss
 
@@ -1039,11 +1038,14 @@ class GLOBEX(MetaRLAlgorithm):
             indices (list): List of task indices to sample from.
 
         Returns:
-            torch.Tensor: Context data, with shape :math:`(X, N, C)`. X is the
-                number of tasks. N is batch size. C is the combined size of
-                observation, action, reward, and next observation if next
-                observation is used in context. Otherwise, C is the combined
-                size of observation, action, and reward.
+            torch.Tensor: Obervations, with shape :math:`(X, N, O^*)` where X
+                is the number of tasks. N is batch size.
+            torch.Tensor: Actions, with shape :math:`(X, N, A^*)`.
+            torch.Tensor: Rewards, with shape :math:`(X, N, 1)`.
+            torch.Tensor: Next observations, with shape :math:`(X, N, O^*)`.
+            torch.Tensor: Dones, with shape :math:`(X, N, 1)`.
+            torch.Tensor: Local context, with shape :math:`(X, N, C)`.
+            torch.Tensor: Indicator whether the prior was reset, with shape :math:`(X, N, 1)`.
 
         """
         # make method work given a single task index
@@ -1131,7 +1133,6 @@ class GLOBEX(MetaRLAlgorithm):
 
         Returns:
             list: A list of networks.
-
         """
         return self._policy.networks + [self._policy] + [
             self._qf1, self._qf2, self._vf, self.target_vf
@@ -1186,7 +1187,11 @@ class GLOBEX(MetaRLAlgorithm):
         """Augment environment by a size of latent dimension. Used for qf only.
         Args:
             env_spec (EnvSpec): Environment specs to be augmented.
-            latent_dim (int): Latent dimension.
+            latent_dim (int): Latent dimension
+            disable_local_encoder (bool): Ablation - whether local encoder is disabled
+            disable_global_encoder (bool): Ablation - whether global encoder is disabled
+            sample_global_embedding (bool): Whether the global embedding is sampled
+            sample_local_embedding (bool) whether local embedding is sampled. All bool indicators impact what dim the latent input is
 
         Returns:
             EnvSpec: Augmented environment specs.
@@ -1226,6 +1231,11 @@ class GLOBEX(MetaRLAlgorithm):
             env_spec (EnvSpec): Environment specification.
             latent_dim (int): Latent dimension.
             module (str): Module to get environment specs for.
+            use_next_obs_in_context (bool): Whether to use the next observation in context
+            disable_local_encoder (bool): Ablation - whether local encoder is disabled
+            disable_global_encoder (bool): Ablation - whether global encoder is disabled
+            sample_global_embedding (bool): Whether the global embedding is sampled
+            sample_local_embedding (bool) whether local embedding is sampled. All bool indicators impact what dim the latent input is
 
         Returns:
             InOutSpec: Module environment specs with latent dimension.
@@ -1322,7 +1332,7 @@ class GLOBEX(MetaRLAlgorithm):
 
 
 class CustomWorker(DefaultWorker):
-    """Custom worker for new algo. It will:
+    """Custom worker for GLOBEX. It will:
         - Store local and global context
         - Sample global context at the beginning of the episode
         - Update local context at each step

@@ -282,8 +282,7 @@ class LocalGlobalContextualPolicy(nn.Module):
             obs (torch.Tensor): Observation values, with shape :math:`(1, O)`.
                 O is the size of the flattened observation space.
             context (torch.Tensor): Context values, with shape
-                :math:`(X, N, C)`. X is the sequence length. N is batch size. C
-                is the combined size of observation, action, reward, and next
+                :math:`(1, C)`. C is the combined size of observation, action, reward, and next
                 observation if next observation is used in context. Otherwise,
                 C is the combined size of observation, action, and reward.
         Returns:
@@ -333,12 +332,15 @@ class LocalGlobalContextualPolicy(nn.Module):
         return action, info
 
     def compute_kl_div(self, global_kl, local_kl, dones):
-        r"""Compute :math:`KL(q(z_t|c_t) \| p(z), where p(z) is a N(0,I) prior`. 
-        NOTE: assumes we have run infer_global_posterior() and infer_local_posterior() with relevant context first!!
+        r"""Compute :math:`KL(q(z_t|c_t) \| p(z)`. 
+        NOTE: assumes we have run infer_global_posterior() and infer_local_posterior() with relevant context first
+        Args:
+            global_kl (bool): True if you need to calc global_kl
+            local_kl (bool): True if you need to calc local_kl
         
-        prev_local_z_mean/var only used if our local prior is NOT N(0,1)
         Returns:
-            float: :math:`KL(q(z|c) \| p(z))`.
+            float: global :math:`KL(q(z^g|c) \| p(z^g))`
+            float: local :math:`KL(q(z^l|c) \| p(z^l))`
         """
         global_prior = torch.distributions.Normal(torch.zeros(self._latent_dim).to(global_device()), 
                                                     torch.ones(self._latent_dim).to(global_device()))
@@ -448,7 +450,7 @@ class LocalGlobalContextualPolicy(nn.Module):
 
     @property
     def context(self):
-        """Return context.
+        """Return context. Legacy/Unused
 
         Returns:
             torch.Tensor: Context values, with shape :math:`(X, N, C)`.
