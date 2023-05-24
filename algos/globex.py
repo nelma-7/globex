@@ -40,19 +40,20 @@ class GLOBEX(MetaRLAlgorithm):
         vf (torch.nn.Module): Value function.
         sampler (garage.sampler.Sampler): Sampler, controls how to sample tasks
         test_env_sampler (garage.experiment.SetTaskSampler): Sampler for test tasks
-        global_recurrent_encoder (bool): Whether global encoder is recurrent
-        local_recurrent_encoder (bool): Whether local encoder is recurrent
+        global_recurrent_encoder (bool): Whether to use a recurrent global encoder (True) or not (False)
+        local_recurrent_encoder (bool): Whether to use a recurrent local encoder (True) or not (False)
         optimizer_class (type): Type of optimizer for training networks.
         discount (float): RL discount factor.
         reward_scale (int): Reward scale.
+        use_next_obs_in_context (bool): Whether to use next_obs in context
         
         # Training params
         num_train_tasks (int): Number of tasks for training.
         num_test_tasks (int or None): Number of tasks for testing.
         latent_dim (int): Size of latent context vector.
-        encoder_hidden_sizes (list[int]): Output dimension of dense layer(s) of the context encoder.
+        encoder_hidden_sizes (list[int]): Output dimension of dense layer(s) of both context encoders.
         decoder_hidden_sizes (list[int]): Output dimension of dense layer(s) of context decoder(s).
-        num_iter_per_epoch (int): Number of iterations per epoch.
+        num_iter_per_epoch (int): Number of iterations/gradient steps per epoch.
         num_initial_steps (int): Number of transitions obtained per task before training.
         num_tasks_sample (int): Number of random tasks to obtain data for each iteration.
         num_steps_prior (int): Number of transitions to obtain per task with z~prior
@@ -76,18 +77,20 @@ class GLOBEX(MetaRLAlgorithm):
         # Local/Global encoding params
         context_lr (float): Inference network learning rate.
         context_batch_size (int): number of transitions sampled in global & local encoder training 
-        context_tbptt_size (int): number of transitions for truncated backprop through time. Only relevant for recurrent encoders.
+        context_tbptt_size (int): number of transitions for truncated backprop through time. Only relevant for recurrent encoders. None will use the full trajectory
         context_buffer_size (int): Size of replay buffer for local & global encoder 
         global_kl_lambda (float): KL lambda value for global encoder.
-        local_kl_lambda (float): KL lambda for local encoder. We also scale this down by context_batch_size 
-            so that global_kl_loss and local_kl_loss is at roughly the same scale
-        reward_loss_coefficient (float): Coefficient for reward loss
-        state_loss_coefficient (float): Coefficient for state loss
+        local_kl_lambda (float): KL lambda for local encoder. We also scale this down by context_batch_size so global_kl_loss and local_kl_loss is at roughly the same scale
+        local_kl_normal_prior (bool): Use N(0,1) prior for local encoder (True), or use prev distribution (False; akin to Bayesian filtering)
+        reward_loss_coefficient (float): Coefficient for reward decoder loss
+        state_loss_coefficient (float): Coefficient for state decoder loss
         transition_reconstruction_coefficient (float): Coefficient for transition reconstruction loss
         mi_loss_coefficient (float): Coefficient for MI loss
         encoder_max_grad_norm (float): Maximum gradient update for encoders
         decoder_max_grad_norm (float): Maximum gradient update for decoders
         encoder_min_std (float): Minimum std for latent variables
+        sample_global_embedding (bool): Whether to use sampled global z in policy (True), or global z distribution mean/var (False)
+        sample_local_embedding (bool): Whether to use sampled local z in policy (True), or local z distribution mean/var (False)
                         
         # OTHER HYPERPARAMS
         global_nonlinearity (torch.nn.functional): nonlinearity used for global encoder
@@ -96,13 +99,13 @@ class GLOBEX(MetaRLAlgorithm):
         epochs_per_eval (int): Number of epochs per eval run
         n_exploration_eps (int): Number of exploration episodes before updating global context 
         n_test_episodes (int): Number of exploitation episodes after updating global context
-            
+        save_grads (bool): Whether to save grad_norms in a list during training. Only used for debugging
+
         # ABLATION PARAMETERS
-        # Note that this should be identical to PEARL if decode_state, decode_reward = False and policy_loss_through_enc, disable_local_encoder = True
-        use_next_obs_in_context (bool): Whether to use next_obs in context
         decode_state (bool): Whether to decode state in global encoder training
         decode_reward (bool): Whether to decode reward in global encoder training
-        policy_loss_through_enc (bool): Whether to pass SAC Q-function loss through encoders during training (PEARL-style)
+        policy_loss_through_global (bool): Whether to pass SAC Q-function loss through global encoder during training
+        policy_loss_through_local (bool): Whether to pass SAC Q-function loss through local encoder during training
         disable_local_encoder (bool): Whether to entirely disable local encoder, and use global encoder only
         disable_global_encoder (bool): Whether to entirely disable global encoder, and use local encoder only        
     """
@@ -121,6 +124,7 @@ class GLOBEX(MetaRLAlgorithm):
             optimizer_class=torch.optim.Adam,
             discount=0.99,
             reward_scale=5.0,
+            use_next_obs_in_context=False, 
 
             # Training params
             num_train_tasks=100,
@@ -135,7 +139,7 @@ class GLOBEX(MetaRLAlgorithm):
             num_extra_rl_steps_posterior=600, 
             batch_size=256,
             num_tasks_sample=5, #Number of train tasks to obtain data from each epoch
-            meta_batch_size=16, #Number of train tasks to update per training iteration. There are num_iter_per_epoch training iterations per epoch (as we train off-policy)
+            meta_batch_size=16, #Number of train tasks to update per training iteration
             
             #SAC Policy params
             policy_lr=3E-4,
@@ -155,7 +159,7 @@ class GLOBEX(MetaRLAlgorithm):
             context_buffer_size=100000,
             global_kl_lambda=.01,
             local_kl_lambda=.01,
-            local_kl_normal_prior=True, #NEW: True=N(0,1) prior for local KL, False=prev transaction prior
+            local_kl_normal_prior=False,
             reward_loss_coefficient=1,
             state_loss_coefficient=1,
             transition_reconstruction_coefficient=1,
@@ -165,8 +169,8 @@ class GLOBEX(MetaRLAlgorithm):
             decoder_max_grad_norm = None,
             mi_max_grad_norm = None,
             encoder_min_std = 1e-10,
-            sample_global_embedding = True, #whether to sample global_z (True), or pass the parameters of the normal dist to the policy (False)
-            sample_local_embedding = True, #whether to sample local_z (True), or pass the parameters of the normal dist to the policy (False)
+            sample_global_embedding = True, 
+            sample_local_embedding = True, 
             
             # OTHER HYPERPARAMS
             global_nonlinearity = nn.ReLU,
@@ -177,11 +181,9 @@ class GLOBEX(MetaRLAlgorithm):
             n_test_episodes=1,
             save_grads=False, #saves a list of grad_norms that applies to each iteration
             
-            # ABLATION PARAMETERS
-            # Note that this should be identical to PEARL if decode_state, decode_reward = False and policy_loss_through_enc, disable_local_encoder = True
-            use_next_obs_in_context=False, # True by default as it only makes sense for local context
-            decode_state=False, # Whether to decode state in global encoder training
-            decode_reward=False, # Whether to decode reward in global encoder training
+            # ABLATION PARAMETERS            
+            decode_state=False, 
+            decode_reward=False, 
             policy_loss_through_global=True,
             policy_loss_through_local=False,
             disable_local_encoder=False,
