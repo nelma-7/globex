@@ -3,7 +3,7 @@
 This repository is the official implementation of GLOBEX, from Global-Local Decomposition of Contextual Representations in Meta-Reinforcement Learning, by Nelson Ma, Junyu Xuan, Jie Lu and Guangquan Zhang, submitted to NeurIPS 2023. 
 
 ## Requirements
-The codebase has been tested on Ubuntu 20.04. Note that the MuJoCo libraries used are generally incompatible with Windows, so using a Linux or Mac OS is strongly recommended.
+The codebase has been tested on Ubuntu 20.04. Note that the MuJoCo libraries used are generally incompatible with Windows, so using a Linux or Mac OS (or WSL) is strongly recommended.
 
 To install requirements:
 ```setup
