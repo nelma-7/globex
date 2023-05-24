@@ -25,6 +25,8 @@ python launch_experiment.py --config ./configs/[EXPERIMENT].json
 
 .json files in configs/ will set up experiments. Here, we include config files for the GLOBEX and PEARL MuJoCo experiments.  
 
+Results for MAML were generated with the [garage MAML-PPO implementation](https://github.com/rlworkgroup/garage/tree/2d594803636e341660cab0e81343abbe9a325353/src/garage/examples/torch), while results for variBAD were generated with [original paper code](https://github.com/lmzintgraf/varibad)
+
 By default, the code will use GPU. To use CPU instead, either use the option `--use_gpu false` or edit the config file.
 
 If ran without any config argument, launch_experiment.py will run the GLOBEX HalfCheetahVel experiment.
