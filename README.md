@@ -3,7 +3,7 @@
 This repository is the official implementation of GLOBEX, from Global-Local Decomposition of Contextual Representations in Meta-Reinforcement Learning, by Nelson Ma, Junyu Xuan, Jie Lu and Guangquan Zhang, submitted to IEEE Transactions on Cybernetics. 
 
 ## Requirements
-The codebase has been tested on Ubuntu 20.04. Note that the MuJoCo libraries used are generally incompatible with Windows, so using a Linux or Mac OS is strongly recommended.
+The codebase has been tested on Ubuntu 20.04. Note that the MuJoCo libraries used are generally incompatible with Windows, so using a Linux or Mac OS (or WSL) is strongly recommended.
 
 To install requirements:
 ```setup
@@ -24,6 +24,8 @@ python launch_experiment.py --config ./configs/[EXPERIMENT].json
 ```
 
 .json files in configs/ will set up experiments. Here, we include config files for the GLOBEX and PEARL MuJoCo experiments.  
+
+Results for MAML were generated with the [garage MAML-PPO implementation](https://github.com/rlworkgroup/garage/tree/2d594803636e341660cab0e81343abbe9a325353/src/garage/examples/torch), while results for variBAD were generated with [original paper code](https://github.com/lmzintgraf/varibad)
 
 By default, the code will use GPU. To use CPU instead, either use the option `--use_gpu false` or edit the config file.
 
