@@ -17,7 +17,6 @@
         "context_batch_size": 100,
         "context_mini_batch_size": 100,
         "meta_batch_size": 10,
-        "mi_loss_coefficient": 0,
         "n_exploration_eps": 2,
         "n_test_episodes": 1
     }

@@ -1,7 +1,7 @@
 {
     "algo": "GLOBEX",
     "env_name": "cheetah-dir",
-    "num_epochs": 350,
+    "num_epochs": 1000,
     
     "algo_params": {
         "num_train_tasks": 2,

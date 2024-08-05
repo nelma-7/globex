@@ -184,7 +184,7 @@ class LocalGlobalContextualPolicy(nn.Module):
             
         self.sample_global_from_belief()
 
-    def infer_local_posterior(self, context, detach_every=None, save_prev_dist=False):
+    def infer_local_posterior(self, context, detach_every=None, save_prev_dist=False, prior_reset_inds=None):
         r"""Compute :math:`q(z \| c)` as a function of input context and sample new z.
         Args:
             context (torch.Tensor): Context values, with shape

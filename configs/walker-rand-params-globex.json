@@ -13,10 +13,13 @@
         "num_steps_posterior": 0,
         "num_extra_rl_steps_posterior": 600,
         "num_iter_per_epoch": 4000,
+        "global_kl_lambda": 0.01,
+        "local_kl_lambda": 0.01,
+        "transition_reconstruction_coefficient": 0.1,
+        "mi_loss_coefficient": 0,
         "batch_size": 256,
         "context_batch_size": 100,
         "meta_batch_size": 10,
-        "mi_loss_coefficient": 0,
         "n_exploration_eps": 2,
         "n_test_episodes": 1
     }
